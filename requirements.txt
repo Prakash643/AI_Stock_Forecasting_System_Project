@@ -4,7 +4,10 @@ numpy
 plotly
 yfinance
 scikit-learn
-tensorflow
-prophet
 matplotlib
+textblob
 newsapi-python
+prophet
+cmdstanpy
+holidays
+tensorflow-cpu==2.16.1
