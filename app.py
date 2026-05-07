@@ -18,6 +18,11 @@ if "logged_in" not in st.session_state or not st.session_state.logged_in:
     login_page()
     st.stop()
 
+# Imports after login gate
+import pandas as pd
+import plotly.graph_objects as go
+import numpy as np
+
 from data_fetcher import fetch_stock
 from indicators import add_indicators
 from prophet_model import prophet_forecast
@@ -25,9 +30,9 @@ from evaluation import rmse
 from history import save_history, get_history
 from news_sentiment import get_sentiment
 from signals import trading_signal
-import plotly.graph_objects as go
-import numpy as np
 
+
+# ================= STYLE =================
 st.markdown(
     """
     <style>
@@ -76,11 +81,25 @@ menu = st.sidebar.radio(
     ["Dashboard", "Prediction", "History", "News Sentiment", "Model Compare"]
 )
 
+
+def safe_close_series(df: pd.DataFrame) -> pd.Series:
+    """Return a clean numeric Close series from a yfinance dataframe."""
+    close_data = df["Close"]
+
+    # If Close accidentally comes as a DataFrame, flatten it to a Series
+    if isinstance(close_data, pd.DataFrame):
+        close_data = close_data.iloc[:, 0]
+
+    close_data = pd.to_numeric(close_data, errors="coerce").dropna()
+    return close_data
+
+
 # ================= DASHBOARD =================
 if menu == "Dashboard":
     st.header("Stock Analysis Dashboard")
 
     ticker = st.text_input("Stock Symbol (AAPL, TSLA, RELIANCE.NS)")
+
     col1, col2 = st.columns(2)
     with col1:
         start_date = st.date_input("Start Date", key="dash_start")
@@ -103,12 +122,23 @@ if menu == "Dashboard":
 
     df = add_indicators(df)
 
-    latest = float(df["Close"].iloc[-1])
-    prev = float(df["Close"].iloc[-2])
+    close_series = safe_close_series(df)
+    if len(close_series) < 2:
+        st.error("Not enough valid Close price data")
+        st.stop()
+
+    latest = float(close_series.iloc[-1])
+    prev = float(close_series.iloc[-2])
+
     change = latest - prev
     percent = (change / prev) * 100 if prev != 0 else 0
 
-    rsi = float(df["RSI"].iloc[-1])
+    rsi_series = pd.to_numeric(df["RSI"], errors="coerce").dropna()
+    if len(rsi_series) == 0:
+        st.error("RSI data not available")
+        st.stop()
+
+    rsi = float(rsi_series.iloc[-1])
     signal = trading_signal(rsi)
 
     m1, m2, m3 = st.columns(3)
@@ -129,6 +159,7 @@ if menu == "Dashboard":
             close=df["Close"],
             increasing=dict(line=dict(color="green")),
             decreasing=dict(line=dict(color="red")),
+            name="Price",
         )
     )
 
@@ -167,11 +198,13 @@ if menu == "Dashboard":
     rsi_fig.update_layout(template="plotly_dark", height=300)
     st.plotly_chart(rsi_fig, use_container_width=True)
 
+
 # ================= PREDICTION =================
 elif menu == "Prediction":
     st.header("Prediction")
 
     ticker = st.text_input("Stock", key="pred_ticker")
+
     col1, col2 = st.columns(2)
     with col1:
         start_date = st.date_input("Start Date", key="pred_start")
@@ -228,16 +261,20 @@ elif menu == "Prediction":
         st.subheader("Forecast Data")
         st.dataframe(forecast[["ds", "yhat", "yhat_lower", "yhat_upper"]].tail(10))
 
+
 # ================= HISTORY =================
 elif menu == "History":
     st.header("History")
+
     data = get_history(user)
     st.dataframe(data)
+
     st.download_button(
         "Download CSV",
         data.to_csv(index=False),
         file_name="history.csv",
     )
+
 
 # ================= NEWS =================
 elif menu == "News Sentiment":
@@ -258,11 +295,13 @@ elif menu == "News Sentiment":
     else:
         st.warning("Neutral")
 
+
 # ================= MODEL COMPARE =================
 elif menu == "Model Compare":
     st.header("Model Comparison")
 
     ticker = st.text_input("Stock", key="comp_ticker")
+
     col1, col2 = st.columns(2)
     with col1:
         start_date = st.date_input("Start Date", key="comp_start")
