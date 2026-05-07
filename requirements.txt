@@ -10,4 +10,3 @@ newsapi-python
 prophet
 cmdstanpy
 holidays
-tensorflow-cpu==2.16.1
